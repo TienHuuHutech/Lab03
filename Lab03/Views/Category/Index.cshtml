@@ -1,0 +1,57 @@
+﻿@model IEnumerable<Lab03.Models.Category>
+
+@{
+    ViewData["Title"] = "Index";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<div class="container mt-5">
+    <h1 class="mb-4 text-primary fw-bold">Category Management</h1>
+
+    <div class="mb-3">
+        <a asp-action="Create" class="btn btn-success btn-lg">
+            <i class="bi bi-plus-lg"></i> Create New Category
+        </a>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <table class="table table-hover table-bordered align-middle">
+                <thead class="table-dark">
+                    <tr>
+                        <th scope="col">@Html.DisplayNameFor(model => model.Name)</th>
+                        <th scope="col" class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (Model.Any())
+                    {
+                        @foreach (var item in Model)
+                        {
+                            <tr>
+                                <td>@Html.DisplayFor(modelItem => item.Name)</td>
+                                <td class="text-end">
+                                    <a asp-action="Edit" asp-route-id="@item.ID" class="btn btn-outline-primary btn-sm">
+                                        <i class="bi bi-pencil-square"></i> Edit
+                                    </a>
+                                    <a asp-action="Details" asp-route-id="@item.ID" class="btn btn-outline-info btn-sm">
+                                        <i class="bi bi-view-list"></i> Details
+                                    </a>
+                                    <a asp-action="Delete" asp-route-id="@item.ID" class="btn btn-outline-danger btn-sm">
+                                        <i class="bi bi-trash3-fill"></i> Delete
+                                    </a>
+                                </td>
+                            </tr>
+                        }
+                    }
+                    else
+                    {
+                        <tr>
+                            <td colspan="2" class="text-center text-muted">No categories found.</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>

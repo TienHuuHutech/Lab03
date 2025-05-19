@@ -1,0 +1,131 @@
+﻿@model IEnumerable<Lab03.Models.Book>
+@{
+    ViewData["Title"] = "Index";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    var categories = ViewBag.Categories as List<Lab03.Models.Category>;
+}
+<style>
+    .category-link {
+        text-decoration: none;
+        display: block;
+        color: #0d6efd;
+        padding: 5px 10px;
+        transition: all 0.2s ease-in-out;
+    }
+
+        .category-link:hover {
+            background-color: #e7f1ff;
+            border-radius: 4px;
+        }
+    table.table {
+        table-layout: fixed;
+        width: 100%;
+    }
+
+    table th, table td {
+        padding: 0.5rem;
+        vertical-align: middle;
+    }
+
+        table th:nth-child(1), table td:nth-child(1) {
+            width: 25%; /* Tiêu đề - tăng thêm */
+            word-break: break-word;
+            white-space: normal;
+        }
+
+        table th:nth-child(2), table td:nth-child(2) {
+            width: 20%; /* Tác giả - tăng thêm */
+            word-break: break-word;
+            white-space: normal;
+        }
+
+        table th:nth-child(3), table td:nth-child(3),
+        table th:nth-child(4), table td:nth-child(4),
+        table th:nth-child(5), table td:nth-child(5),
+        table th:nth-child(6), table td:nth-child(6),
+        table th:nth-child(7), table td:nth-child(7) {
+            white-space: normal; /* Cho phép xuống dòng nếu nội dung dài */
+            overflow: visible; /* Đảm bảo hiển thị đầy đủ nội dung */
+            text-overflow: unset; /* Bỏ hiệu ứng ellipsis */
+            padding: 0.5rem; /* Giữ khoảng cách chuẩn */
+        }
+    /* Căn giữa các nút trong cột Hành động */
+    .action-cell {
+        gap: 6px; /* khoảng cách giữa các nút */
+        flex-wrap: wrap; /* cho phép xuống dòng nếu không đủ chỗ */
+    }
+    .price {
+        color: #dc3545; /* Màu đỏ đậm */
+        font-weight: bold; /* Làm đậm chữ */
+    }
+</style>
+<div class="row">
+    <!-- ASIDE: Cột trái -->
+    <aside class="col-md-3">
+        <div class="card mb-3">
+            <div class="card-header bg-primary text-white">
+                <strong>📂 Danh mục</strong>
+            </div>
+            <ul class="list-group list-group-flush">
+                @if (categories != null && categories.Any())
+                {
+                    foreach (var category in categories)
+                    {
+                        <li class="list-group-item">
+                            <a class="category-link" asp-controller="Book" asp-action="Index" asp-route-categoryId="@category.ID">
+                                @category.Name
+                            </a>
+                        </li>
+                    }
+                }
+                else
+                {
+                    <li class="list-group-item text-muted">Không có danh mục</li>
+                }
+            </ul>
+        </div>
+    </aside>
+
+    <!-- MAIN CONTENT: Cột phải -->
+    <section class="col-md-9">
+        <h2 class="mb-3">📚 Danh sách sách</h2>
+
+        <a class="btn btn-success mb-3" asp-controller="Book" asp-action="Add">➕ Thêm sách</a>
+
+        <table class="table table-bordered table-striped align-middle">
+            <thead class="table-light">
+                <tr>
+                    <th>Tiêu đề</th>
+                    <th>Tác giả</th>
+                    <th>Năm XB</th>
+                    <th>Giá</th>
+                    <th>Danh mục</th>
+                    <th>Bìa</th>
+                    <th>Hành động</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var book in Model)
+                {
+                    <tr>
+                        <td>@book.Title</td>
+                        <td>@book.Author</td>
+                        <td>@book.PublishYear</td>
+                        <td class="price">
+                            @book.Price.ToString("#,0")₫
+                        </td>
+                        <td>@book.Category.Name</td>
+                        <td>
+                            <img src="/@book.Cover" alt="Book Cover" style="max-width: 100%; height: auto;" class="img-thumbnail" />
+                        </td>
+                        <td class="action-cell">
+                            <a class="btn btn-info btn-sm" asp-action="Details" asp-route-id="@book.ID">Xem</a>
+                            <a class="btn btn-warning btn-sm" asp-action="Update" asp-route-id="@book.ID">Sửa</a>
+                            <a class="btn btn-danger btn-sm" asp-action="Delete" asp-route-id="@book.ID">Xoá</a>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </section>
+</div>
