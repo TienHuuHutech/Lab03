@@ -2,7 +2,9 @@
 using Lab03.Repositories;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
-
+using Microsoft.Extensions.Options;
+using MimeKit;
+using MailKit.Net.Smtp;
 namespace Lab03.Controllers
 {
     public class ShoppingCartController : Controller
@@ -11,17 +13,20 @@ namespace Lab03.Controllers
         private readonly ICategoryRepository _categoryRepository;
         private readonly ApplicationDbContext _context;
         private readonly UserManager<IdentityUser> _userManager;
+        private readonly EmailSettings _emailSettings;
 
         public ShoppingCartController(
             IBookRepository bookRepository,
             ICategoryRepository categoryRepository,
             ApplicationDbContext context,
-            UserManager<IdentityUser> userManager)
+            UserManager<IdentityUser> userManager,
+            IOptions<EmailSettings> emailSettings)
         {
             _bookRepository = bookRepository;
             _categoryRepository = categoryRepository;
             _context = context;
             _userManager = userManager;
+            _emailSettings = emailSettings.Value;
         }
 
         public IActionResult Index()
@@ -127,6 +132,8 @@ namespace Lab03.Controllers
             _context.Orders.Add(order);
             await _context.SaveChangesAsync();
 
+            await SendOrderConfirmationEmail(user.Email, order, paymentMethod);
+
             HttpContext.Session.Remove("Cart");
 
             // ✅ Truyền paymentMethod qua TempData để hiển thị ở trang OrderCompleted
@@ -159,6 +166,36 @@ namespace Lab03.Controllers
                 cartTotal = cartTotal.ToString("N0")
             });
         }
+        private async Task SendOrderConfirmationEmail(string toEmail, Order order, string paymentMethod)
+        {
+            var email = new MimeMessage();
+            email.From.Add(new MailboxAddress(_emailSettings.SenderName, _emailSettings.SenderEmail));
+            email.To.Add(MailboxAddress.Parse(toEmail));
+            email.Subject = $"Xác nhận đơn hàng #{order.Id} tại BookStore";
 
+            var bodyBuilder = new BodyBuilder();
+
+            bodyBuilder.HtmlBody = $@"
+            <h3>Đơn hàng của bạn đã được đặt thành công!</h3>
+            <p>Mã đơn hàng: <strong>{order.Id}</strong></p>
+            <p>Ngày đặt: {order.OrderDate:dd/MM/yyyy HH:mm}</p>
+            <p>Phương thức thanh toán: {paymentMethod}</p>
+            <p>Tổng tiền: {order.TotalPrice.ToString("N0")} đ</p>
+            <h4>Chi tiết đơn hàng:</h4>
+            <ul>
+                {string.Join("", order.OrderDetails.Select(d => $"<li>Book ID: {d.BookId}, Số lượng: {d.Quantity}, Giá: {d.Price.ToString("N0")} đ</li>"))}
+            </ul>
+            <p>Chúng tôi sẽ liên hệ và giao hàng đến địa chỉ: {order.ShippingAddress}</p>
+            <p>Cảm ơn bạn đã mua hàng tại BookStore!</p>
+        ";
+
+            email.Body = bodyBuilder.ToMessageBody();
+
+            using var smtp = new SmtpClient();
+            await smtp.ConnectAsync(_emailSettings.SmtpServer, _emailSettings.SmtpPort, MailKit.Security.SecureSocketOptions.StartTls);
+            await smtp.AuthenticateAsync(_emailSettings.SenderEmail, _emailSettings.SenderPassword);
+            await smtp.SendAsync(email);
+            await smtp.DisconnectAsync(true);
+        }
     }
 }

@@ -25,6 +25,10 @@ builder.Services.AddSession(options =>
     options.Cookie.IsEssential = true; // Make the session cookie essential
 });
 
+builder.Services.Configure<EmailSettings>(builder.Configuration.GetSection("EmailSettings"));
+
+builder.Services.AddTransient<EmailSender>();
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
