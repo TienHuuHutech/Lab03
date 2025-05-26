@@ -27,7 +27,7 @@ namespace Lab03.Controllers
         {
             ShoppingCart shoppingCart = new()
             {
-                Book = await _bookRepository.GetByIdAsync(id)
+                book = await _bookRepository.GetByIdAsync(id)
             };
             return View(shoppingCart);
         }

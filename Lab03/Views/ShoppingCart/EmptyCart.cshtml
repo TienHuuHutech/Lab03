@@ -1,0 +1,12 @@
+﻿@{
+    ViewData["Title"] = "Your Cart is Empty";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<div class="container text-center mt-5">
+    <h2 class="text-warning mb-4">Your shopping cart is empty!</h2>
+    <p class="lead">You have no items in your cart. Start shopping now!</p>
+    <a asp-controller="Home" asp-action="Index" class="btn btn-primary btn-lg mt-3">
+        <i class="bi bi-arrow-left-circle"></i> Continue Shopping
+    </a>
+</div>

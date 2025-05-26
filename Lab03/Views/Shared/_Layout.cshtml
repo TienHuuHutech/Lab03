@@ -57,11 +57,8 @@
                             <li class="nav-item">
                                 <a class="nav-link" asp-controller="Category" asp-action="Index">📂 Quản lý danh mục</a>
                             </li>
-                            <form class="d-flex me-3" role="search">
-                                <input class="form-control me-2" type="search" placeholder="Search" aria-label="Search">
-                                <button class="btn btn-secondary" type="submit">Search</button>
-                            </form>
                         </ul>  
+                        <a class="nav-link font-weight-bold me-3" asp-area="" asp-controller="ShoppingCart" asp-action="Index"><i class="bi bi-bag-check font-weight-bold"></i></a>
                         <partial name="_LoginPartial" />
                     </div>
                 </div>

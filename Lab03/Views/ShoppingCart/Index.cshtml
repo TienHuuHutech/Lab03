@@ -1,0 +1,103 @@
+﻿@model List<Lab03.Models.CartItemDto>
+
+@{
+    ViewData["Title"] = "Shopping Cart";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<h1 class="text-center my-4">Your Shopping Cart</h1>
+
+@if (Model == null || !Model.Any())
+{
+    <div class="alert alert-info text-center">
+        Your cart is empty. <a asp-controller="Book" asp-action="Index">Continue shopping</a>
+    </div>
+}
+else
+{
+    <div class="table-responsive">
+        <table class="table table-bordered align-middle">
+            <thead class="table-light">
+                <tr>
+                    <th scope="col">Book</th>
+                    <th scope="col" style="width: 120px;">Quantity</th>
+                    <th scope="col" style="width: 150px;">Unit Price</th>
+                    <th scope="col" style="width: 150px;">Total Price</th>
+                    <th scope="col" style="width: 100px;">Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var item in Model)
+                {
+                    <tr>
+                        <td>
+                            <strong>@item.Title</strong><br />
+                            <small>Book ID: @item.BookID</small>
+                        </td>
+                        <td>
+                            <input type="number"
+                                   value="@item.Quantity"
+                                   min="1"
+                                   class="form-control form-control-sm update-quantity"
+                                   data-id="@item.BookID"
+                                   style="width: 70px;" />
+                        </td>
+                        <td style="color: red;">
+                            @string.Format("{0:N0}đ", item.Price)
+                        </td>
+                        <td style="color: red;" class="item-total" data-id="@item.BookID">
+                            @string.Format("{0:N0}đ", item.Price * item.Quantity)
+                        </td>
+                        <td>
+                            <form method="post" asp-action="RemoveItem" asp-controller="ShoppingCart">
+                                <input type="hidden" name="id" value="@item.BookID" />
+                                <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Are you sure you want to remove this item?');">Remove</button>
+                            </form>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <div class="d-flex justify-content-between align-items-center mt-4">
+        <h4>
+            Total: <span id="cart-total" style="color:red;">
+                @string.Format("{0:N0}đ", Model.Sum(i => i.Price * i.Quantity))
+            </span>
+        </h4>
+        <a asp-action="Checkout" asp-controller="ShoppingCart" class="btn btn-success btn-lg">Proceed to Checkout</a>
+    </div>
+}
+
+@section Scripts {
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script>
+        $(document).ready(function () {
+            $('.update-quantity').on('change', function () {
+                var bookId = $(this).data('id');
+                var quantity = $(this).val();
+
+                $.ajax({
+                    url: '/ShoppingCart/UpdateQuantity',
+                    type: 'POST',
+                    data: { bookId: bookId, quantity: quantity },
+                    success: function (response) {
+                        if (response.success) {
+                            // Cập nhật lại dòng total của sách
+                            $('.item-total[data-id="' + bookId + '"]').text(response.itemTotal + 'đ');
+
+                            // Cập nhật tổng tiền giỏ hàng
+                            $('#cart-total').text(response.cartTotal + 'đ');
+                        } else {
+                            alert("Cập nhật thất bại!");
+                        }
+                    },
+                    error: function () {
+                        alert("Lỗi kết nối khi cập nhật số lượng.");
+                    }
+                });
+            });
+        });
+    </script>
+}

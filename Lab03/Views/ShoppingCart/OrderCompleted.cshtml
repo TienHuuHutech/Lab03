@@ -1,0 +1,24 @@
+﻿@model int
+
+@{
+    ViewData["Title"] = "Order Completed";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<div class="container py-5 text-center">
+    <div class="mb-4">
+        <i class="bi bi-check-circle-fill text-success" style="font-size: 4rem;"></i>
+    </div>
+
+    <h2 class="text-success">Đặt hàng thành công!</h2>
+    <p class="lead">Cảm ơn bạn đã mua hàng tại <strong>BookStore</strong>.</p>
+
+    <div class="alert alert-info mt-4">
+        Mã đơn hàng của bạn là: <strong>@Model</strong><br />
+        Hệ thống sẽ xử lý và giao hàng đến địa chỉ bạn đã cung cấp.
+    </div>
+
+    <div class="mt-4">
+        <a asp-controller="Home" asp-action="Index" class="btn btn-primary me-2">Tiếp tục mua sắm</a>
+    </div>
+</div>
