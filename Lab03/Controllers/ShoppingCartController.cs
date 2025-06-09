@@ -1,10 +1,12 @@
 ﻿using Lab03.Models;
 using Lab03.Repositories;
+using MailKit.Net.Smtp;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using MimeKit;
-using MailKit.Net.Smtp;
+
 namespace Lab03.Controllers
 {
     public class ShoppingCartController : Controller
@@ -84,7 +86,7 @@ namespace Lab03.Controllers
             return RedirectToAction("Index");
         }
 
-        public async Task<IActionResult> Checkout()
+        public IActionResult Checkout()
         {
             var cart = HttpContext.Session.GetObjectFromJson<List<CartItemDto>>("Cart");
             if (cart == null || !cart.Any())
@@ -100,28 +102,29 @@ namespace Lab03.Controllers
             return View(order);
         }
 
-
         [HttpPost]
         public async Task<IActionResult> Checkout(Order order)
         {
             var cart = HttpContext.Session.GetObjectFromJson<List<CartItemDto>>("Cart");
             if (cart == null || !cart.Any())
-            {
                 return RedirectToAction("Index");
-            }
 
             var user = await _userManager.GetUserAsync(User);
             if (user == null)
-            {
                 return RedirectToAction("Login", "Account");
-            }
 
-            // ✅ Lấy phương thức thanh toán từ form
-            var paymentMethod = Request.Form["PaymentMethod"]; // e.g., "COD" hoặc "BankTransfer"
+            // ✅ Lấy thông tin người nhận từ form
+            var fullName = Request.Form["FullName"];
+            var phone = Request.Form["Phone"];
+            var shippingAddress = order.ShippingAddress;
+            var paymentMethod = Request.Form["PaymentMethod"];
 
+            // ✅ Gán thông tin đơn hàng
             order.UserId = user.Id;
             order.OrderDate = DateTime.UtcNow;
             order.TotalPrice = cart.Sum(i => i.Price * i.Quantity);
+            order.ShippingAddress = shippingAddress;
+            order.Notes = order.Notes;
             order.OrderDetails = cart.Select(i => new OrderDetail
             {
                 BookId = i.BookID,
@@ -132,15 +135,28 @@ namespace Lab03.Controllers
             _context.Orders.Add(order);
             await _context.SaveChangesAsync();
 
-            await SendOrderConfirmationEmail(user.Email, order, paymentMethod);
+            // ✅ Nạp Book
+            order = await _context.Orders
+                .Include(o => o.OrderDetails)
+                .ThenInclude(d => d.Book)
+                .FirstOrDefaultAsync(o => o.Id == order.Id);
+
+            // ✅ Gửi email bằng email từ IdentityUser
+            await SendPendingOrderEmail(
+                user.Email!,
+                order,
+                fullName,
+                phone,
+                user.Email!, // không cần lấy từ form
+                shippingAddress
+            );
 
             HttpContext.Session.Remove("Cart");
-
-            // ✅ Truyền paymentMethod qua TempData để hiển thị ở trang OrderCompleted
             TempData["PaymentMethod"] = paymentMethod;
 
             return View("OrderCompleted", order.Id);
         }
+
         [HttpPost]
         public IActionResult UpdateQuantity(int bookId, int quantity)
         {
@@ -166,35 +182,47 @@ namespace Lab03.Controllers
                 cartTotal = cartTotal.ToString("N0")
             });
         }
-        private async Task SendOrderConfirmationEmail(string toEmail, Order order, string paymentMethod)
+
+        private async Task SendPendingOrderEmail(string toEmail, Order order, string customerName, string phone, string email, string diaChi)
         {
-            var email = new MimeMessage();
-            email.From.Add(new MailboxAddress(_emailSettings.SenderName, _emailSettings.SenderEmail));
-            email.To.Add(MailboxAddress.Parse(toEmail));
-            email.Subject = $"Xác nhận đơn hàng #{order.Id} tại BookStore";
+            var message = new MimeMessage();
+            message.From.Add(new MailboxAddress(_emailSettings.SenderName, _emailSettings.SenderEmail));
+            message.To.Add(MailboxAddress.Parse(toEmail));
+            message.Subject = $"Xác nhận đơn hàng #{order.Id} - Chờ thanh toán";
 
             var bodyBuilder = new BodyBuilder();
 
-            bodyBuilder.HtmlBody = $@"
-            <h3>Đơn hàng của bạn đã được đặt thành công!</h3>
-            <p>Mã đơn hàng: <strong>{order.Id}</strong></p>
-            <p>Ngày đặt: {order.OrderDate:dd/MM/yyyy HH:mm}</p>
-            <p>Phương thức thanh toán: {paymentMethod}</p>
-            <p>Tổng tiền: {order.TotalPrice.ToString("N0")} đ</p>
-            <h4>Chi tiết đơn hàng:</h4>
-            <ul>
-                {string.Join("", order.OrderDetails.Select(d => $"<li>Book ID: {d.BookId}, Số lượng: {d.Quantity}, Giá: {d.Price.ToString("N0")} đ</li>"))}
-            </ul>
-            <p>Chúng tôi sẽ liên hệ và giao hàng đến địa chỉ: {order.ShippingAddress}</p>
-            <p>Cảm ơn bạn đã mua hàng tại BookStore!</p>
-        ";
+            // Đọc template từ file
+            var templatePath = Path.Combine(Directory.GetCurrentDirectory(), "Templates", "send2.html");
+            var htmlTemplate = await System.IO.File.ReadAllTextAsync(templatePath);
 
-            email.Body = bodyBuilder.ToMessageBody();
+            // Xử lý danh sách sản phẩm
+            var sanPhamHtml = string.Join("", order.OrderDetails.Select(d =>
+                $@"<tr>
+            <td style='color:#636363;border:1px solid #e5e5e5;padding:12px;text-align:left'>{d.Book.Title}</td>
+            <td style='color:#636363;border:1px solid #e5e5e5;padding:12px;text-align:left'>{d.Quantity}</td>
+            <td style='color:#636363;border:1px solid #e5e5e5;padding:12px;text-align:left'>{d.Price.ToString("N0")} ₫</td>
+        </tr>"));
+
+            // Thay thế các placeholder
+            var htmlBody = htmlTemplate
+                .Replace("{{TenKhachHang}}", customerName)
+                .Replace("{{MaDon}}", order.Id.ToString())
+                .Replace("{{NgayDatHang}}", order.OrderDate.ToString("dd/MM/yyyy HH:mm"))
+                .Replace("{{SanPham}}", sanPhamHtml)
+                .Replace("{{ThanhTien}}", order.TotalPrice.ToString("N0"))
+                .Replace("{{TongTien}}", order.TotalPrice.ToString("N0"))
+                .Replace("{{DiaChi}}", diaChi)
+                .Replace("{{Phone}}", phone)
+                .Replace("{{Email}}", email);
+
+            bodyBuilder.HtmlBody = htmlBody;
+            message.Body = bodyBuilder.ToMessageBody();
 
             using var smtp = new SmtpClient();
             await smtp.ConnectAsync(_emailSettings.SmtpServer, _emailSettings.SmtpPort, MailKit.Security.SecureSocketOptions.StartTls);
             await smtp.AuthenticateAsync(_emailSettings.SenderEmail, _emailSettings.SenderPassword);
-            await smtp.SendAsync(email);
+            await smtp.SendAsync(message);
             await smtp.DisconnectAsync(true);
         }
     }
