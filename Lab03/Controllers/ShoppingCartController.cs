@@ -1,5 +1,6 @@
 ﻿using Lab03.Models;
 using Lab03.Repositories;
+using Lab03.VnPay;
 using MailKit.Net.Smtp;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -16,19 +17,22 @@ namespace Lab03.Controllers
         private readonly ApplicationDbContext _context;
         private readonly UserManager<IdentityUser> _userManager;
         private readonly EmailSettings _emailSettings;
+        private readonly VnPaySettings _vnPaySettings;
 
         public ShoppingCartController(
             IBookRepository bookRepository,
             ICategoryRepository categoryRepository,
             ApplicationDbContext context,
             UserManager<IdentityUser> userManager,
-            IOptions<EmailSettings> emailSettings)
+            IOptions<EmailSettings> emailSettings,
+            IOptions<VnPaySettings> vnPayOptions)
         {
             _bookRepository = bookRepository;
             _categoryRepository = categoryRepository;
             _context = context;
             _userManager = userManager;
             _emailSettings = emailSettings.Value;
+            _vnPaySettings = vnPayOptions.Value;
         }
 
         public IActionResult Index()
@@ -113,13 +117,13 @@ namespace Lab03.Controllers
             if (user == null)
                 return RedirectToAction("Login", "Account");
 
-            // ✅ Lấy thông tin người nhận từ form
+            // Lấy dữ liệu từ form
             var fullName = Request.Form["FullName"];
             var phone = Request.Form["Phone"];
             var shippingAddress = order.ShippingAddress;
             var paymentMethod = Request.Form["PaymentMethod"];
 
-            // ✅ Gán thông tin đơn hàng
+            // Gán thông tin đơn hàng
             order.UserId = user.Id;
             order.OrderDate = DateTime.UtcNow;
             order.TotalPrice = cart.Sum(i => i.Price * i.Quantity);
@@ -133,21 +137,44 @@ namespace Lab03.Controllers
             }).ToList();
 
             _context.Orders.Add(order);
-            await _context.SaveChangesAsync();
+            await _context.SaveChangesAsync(); // có Order.Id
 
-            // ✅ Nạp Book
+            // ✅ Nếu chọn VNPAY → Redirect tới cổng thanh toán
+            if (paymentMethod == "VNPAY")
+            {
+                var vnPay = new VnPayLibrary();
+                var amount = (long)(order.TotalPrice * 100); // VNPAY dùng x100
+                var ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "127.0.0.1";
+
+                vnPay.AddRequestData("vnp_Version", "2.1.0");
+                vnPay.AddRequestData("vnp_Command", "pay");
+                vnPay.AddRequestData("vnp_TmnCode", _vnPaySettings.TmnCode);             // dùng IOptions<VnPaySettings>
+                vnPay.AddRequestData("vnp_Amount", amount.ToString());
+                vnPay.AddRequestData("vnp_CreateDate", DateTime.Now.ToString("yyyyMMddHHmmss"));
+                vnPay.AddRequestData("vnp_CurrCode", "VND");
+                vnPay.AddRequestData("vnp_IpAddr", ipAddress);
+                vnPay.AddRequestData("vnp_Locale", "vn");
+                vnPay.AddRequestData("vnp_OrderInfo", $"Thanh toán đơn hàng #{order.Id}");
+                vnPay.AddRequestData("vnp_OrderType", "other");
+                vnPay.AddRequestData("vnp_ReturnUrl", _vnPaySettings.ReturnUrl);
+                vnPay.AddRequestData("vnp_TxnRef", order.Id.ToString());
+
+                string paymentUrl = vnPay.CreateRequestUrl(_vnPaySettings.Url, _vnPaySettings.HashSecret);
+                return Redirect(paymentUrl);
+            }
+
+            // ✅ Nếu COD → Gửi email và hiển thị trang xác nhận
             order = await _context.Orders
                 .Include(o => o.OrderDetails)
                 .ThenInclude(d => d.Book)
                 .FirstOrDefaultAsync(o => o.Id == order.Id);
 
-            // ✅ Gửi email bằng email từ IdentityUser
             await SendPendingOrderEmail(
                 user.Email!,
                 order,
                 fullName,
                 phone,
-                user.Email!, // không cần lấy từ form
+                user.Email!,
                 shippingAddress
             );
 
@@ -155,6 +182,67 @@ namespace Lab03.Controllers
             TempData["PaymentMethod"] = paymentMethod;
 
             return View("OrderCompleted", order.Id);
+        }
+
+        public async Task<IActionResult> VnPayReturn()
+        {
+            var vnpay = new VnPayLibrary();
+            foreach (var (key, value) in Request.Query)
+            {
+                if (key.StartsWith("vnp_"))
+                    vnpay.AddResponseData(key, value);
+            }
+
+            var orderId = int.Parse(vnpay.GetResponseData("vnp_TxnRef"));
+            var responseCode = vnpay.GetResponseData("vnp_ResponseCode");
+            var secureHash = Request.Query["vnp_SecureHash"];
+
+            var isValid = vnpay.ValidateSignature(secureHash, _vnPaySettings.HashSecret);
+            if (!isValid)
+            {
+                ViewBag.Message = "Chữ ký không hợp lệ";
+                return View("PaymentFailed");
+            }
+
+            if (responseCode == "00")
+            {
+                // ✅ Nạp đơn hàng và thông tin liên quan
+                var order = await _context.Orders
+                    .Include(o => o.OrderDetails)
+                    .ThenInclude(d => d.Book)
+                    .FirstOrDefaultAsync(o => o.Id == orderId);
+
+                if (order == null)
+                {
+                    ViewBag.Message = "Không tìm thấy đơn hàng.";
+                    return View("PaymentFailed");
+                }
+
+                // ✅ Lấy người dùng từ Identity
+                var user = await _userManager.FindByIdAsync(order.UserId);
+
+                if (user == null)
+                {
+                    ViewBag.Message = "Không tìm thấy người dùng.";
+                    return View("PaymentFailed");
+                }
+
+                // ✅ Gửi email xác nhận đã thanh toán
+                await SendPendingOrderEmail(
+                    user.Email!,
+                    order,
+                    user.UserName!,
+                    user.PhoneNumber ?? "",
+                    user.Email!,
+                    order.ShippingAddress
+                );
+
+                TempData["PaymentMethod"] = "VNPAY";
+                return View("OrderCompleted", orderId);
+            }
+
+            ViewBag.Message = $"Thanh toán không thành công. Mã lỗi: {responseCode}";
+            return View("PaymentFailed");
         }
 
         [HttpPost]

@@ -29,6 +29,8 @@ builder.Services.Configure<EmailSettings>(builder.Configuration.GetSection("Emai
 
 builder.Services.AddTransient<EmailSender>();
 
+builder.Services.Configure<VnPaySettings>(builder.Configuration.GetSection("VnPay"));
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
